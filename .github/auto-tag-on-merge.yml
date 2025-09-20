@@ -1,0 +1,26 @@
+name: Auto Tag on Merge to master
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [ master ]
+
+permissions:
+  contents: write  # braucht Schreibrecht um Tags zu erstellen
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Liest letzte Tags & Commits, bestimmt Bump anhand Conventional Commits:
+      # "feat:" -> minor, "fix:" -> patch, "BREAKING CHANGE" -> major
+      - name: Create SemVer tag
+        uses: anothrNick/github-tag-action@1.67.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          DEFAULT_BUMP: patch       # fallback falls keine CCs erkannt werden
+          WITH_V: true              # Tag-Format: v1.2.3
+          PRERELEASE: false
