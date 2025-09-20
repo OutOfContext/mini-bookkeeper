@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  bookkeeper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: restaurant-bookkeeper
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bookkeeper.rule=Host(`bookkeeper.localhost`)"
+      - "traefik.http.services.bookkeeper.loadbalancer.server.port=80"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  default:
+    name: bookkeeper-network

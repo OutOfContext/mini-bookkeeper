@@ -1,96 +1,46 @@
-This will be the bookkeeper web app:
+# Getting Started with Create React App
 
-PROMPT:
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-You are an expert web developer.
-Please generate a **React + TypeScript + TailwindCSS web app** that implements the following concept:
+## Available Scripts
 
-## Goal
-A simple bookkeeping app for a restaurant. 
-The app is designed for **manual daily use** on an iPad, with minimal typing. 
-Most actions should be done with **large, tappable buttons**. 
-Data should be stored locally in the browser (IndexedDB or LocalStorage).
+In the project directory, you can run:
 
-## Features
+### `npm start`
 
-### 1. Stammdaten (setup, one-time)
-- Menu Items: name, price, optional inventory link
-- Employees: name, role, hourly wage
-- Inventory Items: name, unit, start stock, minimum stock
-- Initial cash register balance
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-### 2. Daily Operations (buttons only)
-- **Sales**: Grid of buttons, one per menu item.
-  - Tap = +1 sale
-  - Prompt for payment type (cash / card)
-  - Show daily totals (overall, cash, card)
-- **Expenses**:
-  - Predefined buttons (e.g. "Vegetables 20 €", "Cleaning 15 €")
-  - Generic "Add expense" button for free input
-- **Employees**:
-  - Each employee has Check-in / Check-out buttons
-  - Track worked hours
-  - Automatically calculate wage
-- **Inventory**:
-  - List of items with traffic-light status (ok / low / empty)
-  - Buttons: "+ Delivery", "- Consumption"
-  - Optional link to menu items so sales reduce inventory automatically
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-### 3. Reports
-- **Chef Report (short report)**:
-  - Show: Total revenue, costs (expenses + staff), profit
-  - Breakdown by payment type (cash / card)
-  - Top-selling items
-  - Inventory warnings
-  - Switch view: Day / Week / Month
-- **Daily Closing**:
-  - Show: Previous day’s balance, today’s sales, expenses, staff costs
-  - Input: actual cash counted
-  - Output: difference between expected and actual
-  - Save report
+### `npm test`
 
-## UI Concept
-- **Dashboard (home screen)** with big tiles:
-  - "Start Sales"
-  - "Book Expense"
-  - "Employee Check-in/out"
-  - "Inventory"
-  - "Chef Report"
-  - "Daily Closing"
-- Color coding:
-  - Green = Revenue
-  - Red = Expenses
-  - Blue = Employees
-  - Yellow = Inventory
-  - Gray = Reports/Closing
-- All screens optimized for **iPad usage** with large, easy-to-tap buttons.
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-## Data Model
-- DayRecord: date, startCash, salesCash, salesCard, expenses, endCash
-- MenuItem: id, name, price, soldCount
-- Sale: menuItemId, amount, paymentType, timestamp
-- Employee: id, name, role, hourlyWage
-- Shift: employeeId, start, end, duration, calculatedWage
-- InventoryItem: id, name, unit, stock, minStock, purchasePrice
-- InventoryChange: inventoryItemId, change, reason, timestamp
+### `npm run build`
 
-## Technical Requirements
-- Use React + TypeScript + TailwindCSS
-- Store data locally (IndexedDB or LocalStorage)
-- Provide reusable components for:
-  - ButtonGrid (menu items)
-  - SummaryCards (totals, reports)
-  - DataTables (expenses, shifts, inventory)
-- Include demo/sample data for testing
-- Focus on simplicity and clarity (POS-like design)
-- Responsive design for iPad (landscape & portrait)
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-Please generate the **full React project structure** including:
-- Components
-- Pages (for each screen described)
-- Context or Redux for state management
-- Local storage hooks (IndexedDB/LocalStorage)
-- Sample data for quick testing
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-Use this for reference!
+### `npm run eject`
+
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+
+## Learn More
+
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+
+To learn React, check out the [React documentation](https://reactjs.org/).
