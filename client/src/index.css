@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom iPad-friendly styles */
+@layer base {
+  * {
+    touch-action: manipulation;
+  }
+  
+  body {
+    @apply bg-gray-50 font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  button {
+    @apply select-none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Large button styles for iPad */
+@layer components {
+  .btn-large {
+    @apply px-6 py-4 text-lg font-medium rounded-lg transition-all duration-150 min-h-[60px] touch-manipulation;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700;
+  }
+  
+  .btn-success {
+    @apply bg-success-600 text-white hover:bg-success-600;
+  }
+  
+  .btn-warning {
+    @apply bg-warning-600 text-white hover:bg-warning-600;
+  }
+  
+  .btn-danger {
+    @apply bg-danger-600 text-white hover:bg-danger-600;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 text-gray-800 hover:bg-gray-300;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-md p-6;
+  }
+  
+  .input-large {
+    @apply px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 min-h-[50px];
+  }
+  
+  .dashboard-tile {
+    @apply bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow duration-200 cursor-pointer min-h-[120px] flex flex-col items-center justify-center text-center;
+  }
+}

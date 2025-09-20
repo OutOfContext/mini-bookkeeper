@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  sales            Sale[]
+  expenses         Expense[]
+  inventoryChanges InventoryChange[]
+  sessions         Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  name      String?   @default("Unbenannte Session")
+  date      DateTime  @default(now()) @db.Date
+  startTime DateTime  @default(now()) @map("start_time")
+  endTime   DateTime? @map("end_time")
+  isActive  Boolean   @default(true) @map("is_active")
+  userId    String    @map("user_id")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+}
+
+model MenuCategory {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  menuItems MenuItem[]
+
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id         String  @id @default(cuid())
+  name       String
+  price      Float
+  soldCount  Int     @default(0) @map("sold_count")
+  categoryId String  @map("category_id")
+  isDeleted  Boolean @default(false) @map("is_deleted")
+
+  category MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sales    Sale[]
+
+  @@map("menu_items")
+}
+
+model Sale {
+  id          String      @id @default(cuid())
+  menuItemId  String      @map("menu_item_id")
+  amount      Int         @default(1)
+  paymentType PaymentType @map("payment_type")
+  timestamp   DateTime    @default(now())
+  userId      String      @map("user_id")
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("sales")
+}
+
+model Employee {
+  id         String @id @default(cuid())
+  name       String
+  hourlyWage Float  @map("hourly_wage")
+
+  shifts Shift[]
+
+  @@map("employees")
+}
+
+model Shift {
+  id         String    @id @default(cuid())
+  employeeId String    @map("employee_id")
+  startTime  DateTime  @map("start_time")
+  endTime    DateTime? @map("end_time")
+  duration   Float?    @default(0) // in hours
+  wage       Float?    @default(0)
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("shifts")
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  amount    Float
+  reason    String
+  timestamp DateTime @default(now())
+  userId    String   @map("user_id")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("expenses")
+}
+
+model InventoryItem {
+  id            String @id @default(cuid())
+  name          String
+  unit          String
+  stock         Float  @default(0)
+  minStock      Float  @map("min_stock")
+  purchasePrice Float  @map("purchase_price")
+
+  changes InventoryChange[]
+
+  @@map("inventory_items")
+}
+
+model InventoryChange {
+  id              String   @id @default(cuid())
+  inventoryItemId String   @map("inventory_item_id")
+  change          Float // positive for delivery, negative for consumption
+  reason          String
+  timestamp       DateTime @default(now())
+  userId          String   @map("user_id")
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id])
+
+  @@map("inventory_changes")
+}
+
+model DayRecord {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  startCash Float    @map("start_cash")
+  salesCash Float    @map("sales_cash")
+  salesCard Float    @map("sales_card")
+  expenses  Float
+  endCash   Float    @map("end_cash")
+
+  @@map("day_records")
+}
+
+enum PaymentType {
+  CASH
+  CARD
+}

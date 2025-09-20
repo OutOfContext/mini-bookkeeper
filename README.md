@@ -1,46 +1,117 @@
-# Getting Started with Create React App
+You are an expert full-stack developer. 
+Please generate a **single-container Node.js application** with:
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+- React + TypeScript + TailwindCSS frontend
+- Express.js backend
+- PostgreSQL database integration (with Prisma ORM)
+- Authentication (login/logout with JWT)
+- Simple user management (CRUD for users, no roles)
+- Backend serves both API and frontend build
 
-## Available Scripts
+## Goal
+A simple restaurant bookkeeping app for iPad use. 
+All authenticated users see the same features. 
+The app must be easy to use with large buttons and minimal typing.
 
-In the project directory, you can run:
+## Features
 
-### `npm start`
+### Authentication
+- Login page (username + password)
+- JWT-based authentication (Access + Refresh tokens)
+- Passwords stored as bcrypt hash
+- Logout button
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Sessions
+- After login, user is redirected to a Session Dashboard.
+- A session represents a partial result of the day.
+- There can be multiple sessions per day, but only one active at a time.
+- Session data:
+  - id, date, start_time, end_time, is_active, user_id
+- CRUD:
+  - Start new session (closes any active one)
+  - End session
+  - List all sessions for current day with summaries
+- All daily operations (sales, expenses, shifts, inventory changes) are linked to the current active session.
+- Daily Closing aggregates results of all sessions for the day.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
 
-### `npm test`
+### User Management
+- Admin screen for:
+  - Add user
+  - Change password
+  - Delete user
+- No roles: all users see same features
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Stammdaten (configurable)
+- **Menu Categories** (CRUD: add, edit, delete)
+- **Menu Items**: id, name, price, category_id, soldCount
+- **Employees**: id, name, hourlyWage
+- **Inventory Items**: id, name, unit, stock, minStock, purchasePrice
 
-### `npm run build`
+### Daily Operations
+- **Sales**:
+  - Grid of buttons grouped by menu category
+  - Tap = +1 sale
+  - Choose payment type (cash/card)
+  - Daily totals shown (overall, cash, card)
+- **Expenses**:
+  - Predefined buttons + generic add-expense
+- **Employees**:
+  - Check-in/out
+  - Worked hours & wage calculation
+- **Inventory**:
+  - Traffic-light list (ok/low/empty)
+  - +Delivery / -Consumption buttons
+  - Optional: sales reduce inventory
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Reports
+- **Chef Report**:
+  - Revenue (cash/card)
+  - Costs (expenses + staff)
+  - Profit
+  - Top-selling items
+  - Inventory warnings
+  - Views: Day / Week / Month
+- **Daily Closing**:
+  - Previous balance
+  - Sales
+  - Expenses
+  - Staff costs
+  - Input: actual cash counted
+  - Output: difference expected vs. actual
+  - Save report
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Database (Postgres)
+- users (id, username, password_hash, created_at)
+- menu_categories (id, name)
+- menu_items (id, name, price, category_id, sold_count)
+- sales (id, menu_item_id, amount, payment_type, timestamp, user_id)
+- employees (id, name, hourly_wage)
+- shifts (id, employee_id, start_time, end_time, duration, wage)
+- expenses (id, amount, reason, timestamp, user_id)
+- inventory_items (id, name, unit, stock, min_stock, purchase_price)
+- inventory_changes (id, inventory_item_id, change, reason, timestamp, user_id)
+- day_records (id, date, start_cash, sales_cash, sales_card, expenses, end_cash)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Backend
+- Express.js REST API
+- Authentication middleware (JWT)
+- CRUD endpoints:
+  - Users
+  - Menu categories
+  - Menu items
+  - Employees
+  - Inventory
+  - Sales, Expenses, Shifts, Inventory Changes
+- Reports endpoints (daily/weekly/monthly)
 
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Frontend
+- React + TypeScript + TailwindCSS
+- Login page
+- Dashboard with big tiles:
+  - Sales
+  - Expenses
+  - Employees
+  - Inventory
+  - Reports
+  - Daily Cl
