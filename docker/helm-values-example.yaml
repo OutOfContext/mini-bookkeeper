@@ -1,0 +1,80 @@
+# Example Helm values for Restaurant Bookkeeping App
+# Copy this file and adjust the values for your deployment
+
+image:
+  repository: your-registry/restaurant-bookkeeping
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8001
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+  hosts:
+    - host: restaurant-app.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Environment variables for the application
+env:
+  # Required: Database connection
+  DATABASE_URL: "postgresql://username:password@postgres-service:5432/restaurant_db?schema=public&connection_limit=10&pool_timeout=20"
+  
+  # Required: JWT configuration
+  JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+  JWT_EXPIRES_IN: "8h"
+  JWT_REFRESH_EXPIRES_IN: "7d"
+  
+  # Application settings
+  NODE_ENV: "production"
+  PORT: "8002"
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8001
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8001
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# PostgreSQL (if deploying with the app)
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "admin-password"
+    username: "restaurant_user"
+    password: "restaurant_pass"
+    database: "restaurant_db"
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi

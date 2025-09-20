@@ -1,520 +1,715 @@
 #!/usr/bin/env python3
-"""
-Backend Test for Restaurant Bookkeeper Application
-Tests Quick-Expenses functionality and IndexedDB operations
-"""
 
-import asyncio
+import requests
 import json
-import time
-from datetime import datetime, timedelta
-from playwright.async_api import async_playwright
 import sys
+import time
+from datetime import datetime
 
-class QuickExpenseTester:
-    def __init__(self):
-        self.browser = None
-        self.page = None
-        self.base_url = "http://localhost:3000"
-        self.test_results = {
-            "quick_expenses_tests": {},
-            "database_operations": {},
-            "ui_functionality": {},
-            "indexeddb_verification": {},
-            "error_logs": []
+class RestaurantAPITester:
+    def __init__(self, base_url="http://localhost:8001"):
+        self.base_url = base_url
+        self.token = None
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.session = requests.Session()
+        self.session.headers.update({'Content-Type': 'application/json'})
+
+    def log(self, message, level="INFO"):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {level}: {message}")
+
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/api/{endpoint}"
+        test_headers = self.session.headers.copy()
+        
+        if self.token:
+            test_headers['Authorization'] = f'Bearer {self.token}'
+        if headers:
+            test_headers.update(headers)
+
+        self.tests_run += 1
+        self.log(f"Testing {name}...")
+        
+        try:
+            if method == 'GET':
+                response = self.session.get(url, headers=test_headers)
+            elif method == 'POST':
+                response = self.session.post(url, json=data, headers=test_headers)
+            elif method == 'PUT':
+                response = self.session.put(url, json=data, headers=test_headers)
+            elif method == 'DELETE':
+                response = self.session.delete(url, headers=test_headers)
+
+            success = response.status_code == expected_status
+            if success:
+                self.tests_passed += 1
+                self.log(f"✅ {name} - Status: {response.status_code}", "PASS")
+                try:
+                    return True, response.json()
+                except:
+                    return True, response.text
+            else:
+                self.log(f"❌ {name} - Expected {expected_status}, got {response.status_code}", "FAIL")
+                try:
+                    self.log(f"Response: {response.json()}", "ERROR")
+                except:
+                    self.log(f"Response: {response.text}", "ERROR")
+                return False, {}
+
+        except Exception as e:
+            self.log(f"❌ {name} - Error: {str(e)}", "FAIL")
+            return False, {}
+
+    def test_health_check(self):
+        """Test health endpoint"""
+        success, response = self.run_test(
+            "Health Check",
+            "GET",
+            "../health",  # Health is not under /api
+            200
+        )
+        return success
+
+    def test_login(self, username, password):
+        """Test login and get token"""
+        success, response = self.run_test(
+            f"Login ({username})",
+            "POST",
+            "auth/login",
+            200,
+            data={"username": username, "password": password}
+        )
+        if success and isinstance(response, dict) and 'accessToken' in response:
+            self.token = response['accessToken']
+            self.log(f"✅ Login successful, token received")
+            return True
+        return False
+
+    def test_auth_endpoints(self):
+        """Test authentication endpoints"""
+        self.log("=== Testing Authentication ===")
+        
+        # Test login with valid credentials
+        if not self.test_login("admin", "password123"):
+            self.log("❌ Admin login failed, stopping auth tests")
+            return False
+            
+        # Test refresh token
+        success, response = self.run_test(
+            "Token Refresh",
+            "POST",
+            "auth/refresh",
+            200,
+            data={"refreshToken": "dummy_token"}  # This will fail but we test the endpoint
+        )
+        
+        return True
+
+    def test_user_management(self):
+        """Test user management endpoints"""
+        self.log("=== Testing User Management ===")
+        
+        # Get all users
+        success, users = self.run_test(
+            "Get All Users",
+            "GET",
+            "users",
+            200
+        )
+        
+        if not success:
+            return False
+            
+        # Create a new user
+        new_user_data = {
+            "username": f"testuser_{datetime.now().strftime('%H%M%S')}",
+            "password": "testpass123"
         }
+        
+        success, created_user = self.run_test(
+            "Create User",
+            "POST",
+            "users",
+            201,
+            data=new_user_data
+        )
+        
+        if success and isinstance(created_user, dict) and 'id' in created_user:
+            user_id = created_user['id']
+            
+            # Get specific user
+            success, _ = self.run_test(
+                "Get User by ID",
+                "GET",
+                f"users/{user_id}",
+                200
+            )
+            
+            # Update user
+            update_data = {"username": f"updated_{new_user_data['username']}"}
+            success, _ = self.run_test(
+                "Update User",
+                "PUT",
+                f"users/{user_id}",
+                200,
+                data=update_data
+            )
+            
+            # Delete user
+            success, _ = self.run_test(
+                "Delete User",
+                "DELETE",
+                f"users/{user_id}",
+                200
+            )
+            
+        return True
 
-    async def setup(self):
-        """Setup browser and navigate to application"""
-        playwright = await async_playwright().start()
-        self.browser = await playwright.chromium.launch(headless=True)
-        self.page = await self.browser.new_page()
+    def test_menu_management(self):
+        """Test menu management endpoints"""
+        self.log("=== Testing Menu Management ===")
         
-        # Enable console logging to capture errors
-        def handle_console(msg):
-            print(f"BROWSER: {msg.text}")
-            if msg.type in ['error', 'warning']:
-                self.test_results["error_logs"].append({
-                    'type': msg.type,
-                    'text': msg.text,
-                    'timestamp': datetime.now().isoformat()
-                })
+        # Get categories
+        success, categories = self.run_test(
+            "Get Menu Categories",
+            "GET",
+            "menu/categories",
+            200
+        )
         
-        self.page.on("console", handle_console)
+        if not success:
+            return False
+            
+        # Get menu items
+        success, items = self.run_test(
+            "Get Menu Items",
+            "GET",
+            "menu/items",
+            200
+        )
         
-        try:
-            await self.page.goto(self.base_url, timeout=30000)
-            await self.page.wait_for_load_state('networkidle', timeout=30000)
-            print(f"✅ Successfully loaded application at {self.base_url}")
+        # Create a new category
+        new_category = {
+            "name": f"Test Category {datetime.now().strftime('%H%M%S')}",
+            "description": "Test category description"
+        }
+        
+        success, created_category = self.run_test(
+            "Create Menu Category",
+            "POST",
+            "menu/categories",
+            201,
+            data=new_category
+        )
+        
+        if success and isinstance(created_category, dict) and 'id' in created_category:
+            category_id = created_category['id']
+            
+            # Create a menu item
+            new_item = {
+                "name": f"Test Item {datetime.now().strftime('%H%M%S')}",
+                "description": "Test item description",
+                "price": 12.99,
+                "categoryId": category_id
+            }
+            
+            success, created_item = self.run_test(
+                "Create Menu Item",
+                "POST",
+                "menu/items",
+                201,
+                data=new_item
+            )
+            
+            if success and isinstance(created_item, dict) and 'id' in created_item:
+                item_id = created_item['id']
+                
+                # Update menu item
+                update_data = {"price": 15.99}
+                success, _ = self.run_test(
+                    "Update Menu Item",
+                    "PUT",
+                    f"menu/items/{item_id}",
+                    200,
+                    data=update_data
+                )
+                
+                # Delete menu item
+                success, _ = self.run_test(
+                    "Delete Menu Item",
+                    "DELETE",
+                    f"menu/items/{item_id}",
+                    200
+                )
+            
+            # Delete category
+            success, _ = self.run_test(
+                "Delete Menu Category",
+                "DELETE",
+                f"menu/categories/{category_id}",
+                200
+            )
+        
+        return True
+
+    def test_session_management(self):
+        """Test session management"""
+        self.log("=== Testing Session Management ===")
+        
+        # Get current session
+        success, session = self.run_test(
+            "Get Current Session",
+            "GET",
+            "sessions/current",
+            200
+        )
+        
+        # Start a new session
+        session_data = {
+            "startingCash": 500.00
+        }
+        
+        success, _ = self.run_test(
+            "Start Session",
+            "POST",
+            "sessions/start",
+            201,
+            data=session_data
+        )
+        
+        return success
+
+    def test_sales_endpoints(self):
+        """Test sales endpoints"""
+        self.log("=== Testing Sales ===")
+        
+        # Get sales
+        success, sales = self.run_test(
+            "Get Sales",
+            "GET",
+            "sales",
+            200
+        )
+        
+        # Create a sale (need menu items first)
+        success, items = self.run_test(
+            "Get Menu Items for Sale",
+            "GET",
+            "menu/items",
+            200
+        )
+        
+        if success and isinstance(items, list) and len(items) > 0:
+            item_id = items[0]['id']
+            
+            sale_data = {
+                "items": [{"itemId": item_id, "quantity": 2}],
+                "paymentType": "cash",
+                "total": 25.98
+            }
+            
+            success, _ = self.run_test(
+                "Create Sale",
+                "POST",
+                "sales",
+                201,
+                data=sale_data
+            )
+        
+        return success
+
+    def test_employee_management(self):
+        """Test employee management"""
+        self.log("=== Testing Employee Management ===")
+        
+        # Get employees
+        success, employees = self.run_test(
+            "Get Employees",
+            "GET",
+            "employees",
+            200
+        )
+        
+        if success and isinstance(employees, list) and len(employees) > 0:
+            employee_id = employees[0]['id']
+            
+            # Check in employee
+            success, _ = self.run_test(
+                "Employee Check In",
+                "POST",
+                f"employees/{employee_id}/checkin",
+                200
+            )
+            
+            # Check out employee
+            success, _ = self.run_test(
+                "Employee Check Out",
+                "POST",
+                f"employees/{employee_id}/checkout",
+                200
+            )
+        
+        return success
+
+    def test_inventory_management(self):
+        """Test inventory management"""
+        self.log("=== Testing Inventory Management ===")
+        
+        # Get inventory
+        success, inventory = self.run_test(
+            "Get Inventory",
+            "GET",
+            "inventory",
+            200
+        )
+        
+        if success and isinstance(inventory, list) and len(inventory) > 0:
+            item_id = inventory[0]['id']
+            
+            # Update inventory
+            update_data = {"currentStock": 50}
+            success, _ = self.run_test(
+                "Update Inventory",
+                "PUT",
+                f"inventory/{item_id}",
+                200,
+                data=update_data
+            )
+        
+        return success
+
+    def test_expense_management(self):
+        """Test expense management"""
+        self.log("=== Testing Expense Management ===")
+        
+        # Get expenses
+        success, expenses = self.run_test(
+            "Get Expenses",
+            "GET",
+            "expenses",
+            200
+        )
+        
+        # Create expense
+        expense_data = {
+            "description": "Test expense",
+            "amount": 25.50,
+            "category": "supplies"
+        }
+        
+        success, _ = self.run_test(
+            "Create Expense",
+            "POST",
+            "expenses",
+            201,
+            data=expense_data
+        )
+        
+        return success
+
+    def test_reports(self):
+        """Test reporting endpoints"""
+        self.log("=== Testing Reports ===")
+        
+        # Get daily report
+        success, _ = self.run_test(
+            "Get Daily Report",
+            "GET",
+            "reports/daily",
+            200
+        )
+        
+        # Get weekly report
+        success, _ = self.run_test(
+            "Get Weekly Report",
+            "GET",
+            "reports/weekly",
+            200
+        )
+        
+        # Get monthly report
+        success, _ = self.run_test(
+            "Get Monthly Report",
+            "GET",
+            "reports/monthly",
+            200
+        )
+        
+        return success
+
+    def test_session_specific_sales_functionality(self):
+        """Test session-specific sales functionality as requested"""
+        self.log("=== Testing Session-Specific Sales Functionality ===")
+        
+        # First login
+        if not self.test_login("admin", "password123"):
+            self.log("❌ Admin login failed, cannot test sales")
+            return False
+        
+        time.sleep(1)
+        
+        # 1. Test Active Session Check
+        success, active_session = self.run_test(
+            "1. Get Active Session",
+            "GET",
+            "sessions/active",
+            200
+        )
+        
+        if not success:
+            self.log("❌ Failed to check active session")
+            return False
+        
+        # If no active session, start one for testing
+        if not active_session:
+            self.log("No active session found, starting new session for testing...")
+            success, new_session = self.run_test(
+                "Start New Session for Testing",
+                "POST",
+                "sessions/start",
+                201,
+                data={"name": "Session-Specific Sales Test"}
+            )
+            if not success:
+                self.log("❌ Could not start session for testing")
+                return False
+            active_session = new_session
+            self.log("✅ New session started successfully")
+        else:
+            self.log("✅ Active session found")
+        
+        session_start_time = active_session.get('startTime')
+        self.log(f"Session start time: {session_start_time}")
+        
+        time.sleep(1)
+        
+        # 2. Test Menu Items Loading
+        success, categories = self.run_test(
+            "2. Get Menu Categories",
+            "GET",
+            "menu/categories",
+            200
+        )
+        
+        if not success or not isinstance(categories, list) or len(categories) == 0:
+            self.log("❌ No menu categories available for testing")
+            return False
+        
+        # Find a menu item to test with
+        test_item = None
+        for category in categories:
+            if 'menuItems' in category and len(category['menuItems']) > 0:
+                test_item = category['menuItems'][0]
+                break
+        
+        if not test_item:
+            self.log("❌ No menu items available for testing")
+            return False
+        
+        self.log(f"✅ Using test item: {test_item['name']} (€{test_item['price']})")
+        
+        time.sleep(1)
+        
+        # 3. Test Session Sales Calculation - Get initial session sales
+        success, initial_session_sales = self.run_test(
+            "3. Get Initial Session Sales by Range",
+            "GET",
+            f"sales/range?startDate={session_start_time}&endDate={datetime.now().isoformat()}",
+            200
+        )
+        
+        if not success:
+            self.log("❌ Failed to get session sales by range")
+            return False
+        
+        initial_sales_count = len(initial_session_sales) if isinstance(initial_session_sales, list) else 0
+        self.log(f"Initial session sales count: {initial_sales_count}")
+        
+        time.sleep(1)
+        
+        # 4. Test Sales Creation
+        sale_data = {
+            "menuItemId": test_item['id'],
+            "amount": 2,
+            "paymentType": "CASH"
+        }
+        
+        success, sale_response = self.run_test(
+            "4. Create Test Sale",
+            "POST",
+            "sales",
+            200,  # FastAPI proxy returns 200 instead of 201
+            data=sale_data
+        )
+        
+        if not success:
+            self.log("❌ Failed to create test sale")
+            return False
+        
+        self.log("✅ Test sale created successfully")
+        
+        time.sleep(1)
+        
+        # 5. Test Session Totals Update - Get updated session sales
+        success, updated_session_sales = self.run_test(
+            "5. Get Updated Session Sales by Range",
+            "GET",
+            f"sales/range?startDate={session_start_time}&endDate={datetime.now().isoformat()}",
+            200
+        )
+        
+        if not success:
+            self.log("❌ Failed to get updated session sales")
+            return False
+        
+        updated_sales_count = len(updated_session_sales) if isinstance(updated_session_sales, list) else 0
+        self.log(f"Updated session sales count: {updated_sales_count}")
+        
+        # Verify the sale was added to session
+        if updated_sales_count > initial_sales_count:
+            self.log("✅ Session sales count increased after creating sale")
+        else:
+            self.log("❌ Session sales count did not increase")
+        
+        # Calculate session-specific totals manually to verify
+        session_totals = {"overall": 0, "cash": 0, "card": 0, "itemCount": 0}
+        if isinstance(updated_session_sales, list):
+            for sale in updated_session_sales:
+                if 'menuItem' in sale and 'price' in sale['menuItem']:
+                    sale_amount = sale['menuItem']['price'] * sale['amount']
+                    session_totals['overall'] += sale_amount
+                    session_totals['itemCount'] += sale['amount']
+                    
+                    if sale['paymentType'] == 'CASH':
+                        session_totals['cash'] += sale_amount
+                    else:
+                        session_totals['card'] += sale_amount
+        
+        self.log(f"Calculated session totals: Overall=€{session_totals['overall']:.2f}, Cash=€{session_totals['cash']:.2f}, Card=€{session_totals['card']:.2f}, Items={session_totals['itemCount']}")
+        
+        time.sleep(1)
+        
+        # 6. Test that daily totals are different from session totals (if there are older sales)
+        success, daily_totals = self.run_test(
+            "6. Get Daily Sales Totals",
+            "GET",
+            "sales/today/totals",
+            200
+        )
+        
+        if success and isinstance(daily_totals, dict):
+            self.log(f"Daily totals: Overall=€{daily_totals['overall']:.2f}, Cash=€{daily_totals['cash']:.2f}, Card=€{daily_totals['card']:.2f}, Items={daily_totals['itemCount']}")
+            
+            # The key test: session totals should be <= daily totals (session is subset of day)
+            if session_totals['overall'] <= daily_totals['overall']:
+                self.log("✅ Session totals are correctly subset of daily totals")
+            else:
+                self.log("❌ Session totals exceed daily totals - this shouldn't happen")
+        
+        # 7. Test New Session Scenario - Start a new session and verify zeros
+        self.log("Testing new session scenario...")
+        success, new_session_2 = self.run_test(
+            "7. Start Another New Session",
+            "POST",
+            "sessions/start",
+            200,  # FastAPI proxy returns 200 instead of 201
+            data={"name": "New Session Zero Test"}
+        )
+        
+        if success:
+            new_session_start = new_session_2.get('startTime')
+            time.sleep(1)
+            
+            # Get sales for this brand new session (should be empty)
+            success, new_session_sales = self.run_test(
+                "8. Get New Session Sales (Should be Empty)",
+                "GET",
+                f"sales/range?startDate={new_session_start}&endDate={datetime.now().isoformat()}",
+                200
+            )
+            
+            if success:
+                new_session_count = len(new_session_sales) if isinstance(new_session_sales, list) else 0
+                if new_session_count == 0:
+                    self.log("✅ New session has zero sales as expected")
+                else:
+                    self.log(f"❌ New session has {new_session_count} sales, expected 0")
+        
+        return True
+
+    def run_all_tests(self):
+        """Run all API tests"""
+        self.log("🚀 Starting Restaurant Bookkeeping API Tests")
+        
+        # Test health check first
+        if not self.test_health_check():
+            self.log("❌ Health check failed, stopping tests")
+            return False
+        
+        # Test authentication
+        if not self.test_auth_endpoints():
+            self.log("❌ Authentication failed, stopping tests")
+            return False
+        
+        # Test all other endpoints
+        test_methods = [
+            self.test_user_management,
+            self.test_menu_management,
+            self.test_session_management,
+            self.test_sales_endpoints,
+            self.test_employee_management,
+            self.test_inventory_management,
+            self.test_expense_management,
+            self.test_reports
+        ]
+        
+        for test_method in test_methods:
+            try:
+                test_method()
+            except Exception as e:
+                self.log(f"❌ Error in {test_method.__name__}: {str(e)}", "ERROR")
+        
+        # Print final results
+        self.log("=" * 50)
+        self.log(f"📊 Tests completed: {self.tests_passed}/{self.tests_run} passed")
+        
+        if self.tests_passed == self.tests_run:
+            self.log("🎉 All tests passed!")
             return True
-        except Exception as e:
-            print(f"❌ Failed to load application: {e}")
+        else:
+            self.log(f"⚠️  {self.tests_run - self.tests_passed} tests failed")
             return False
-
-    async def check_indexeddb_schema(self):
-        """Check if IndexedDB has the correct schema for quickExpenses"""
-        print("\n🔍 Checking IndexedDB schema...")
-        
-        try:
-            # Execute JavaScript to check IndexedDB schema
-            schema_check = await self.page.evaluate("""
-                async () => {
-                    return new Promise((resolve) => {
-                        const request = indexedDB.open('BookkeeperDB');
-                        request.onsuccess = (event) => {
-                            const db = event.target.result;
-                            const objectStoreNames = Array.from(db.objectStoreNames);
-                            const version = db.version;
-                            
-                            // Check if quickExpenses table exists
-                            const hasQuickExpenses = objectStoreNames.includes('quickExpenses');
-                            
-                            resolve({
-                                version: version,
-                                objectStores: objectStoreNames,
-                                hasQuickExpenses: hasQuickExpenses
-                            });
-                        };
-                        request.onerror = () => resolve({ error: 'Failed to open database' });
-                    });
-                }
-            """)
-            
-            self.test_results["indexeddb_verification"] = schema_check
-            
-            print(f"📊 IndexedDB Schema:")
-            print(f"   Version: {schema_check.get('version', 'Unknown')}")
-            print(f"   Object Stores: {schema_check.get('objectStores', [])}")
-            print(f"   Has quickExpenses table: {schema_check.get('hasQuickExpenses', False)}")
-            
-            return schema_check
-            
-        except Exception as e:
-            print(f"❌ Error checking IndexedDB schema: {e}")
-            return None
-
-    async def check_existing_quick_expenses(self):
-        """Check existing Quick-Expenses in the database"""
-        print("\n🔍 Checking existing Quick-Expenses...")
-        
-        try:
-            # Navigate to Quick-Expenses page
-            await self.page.goto(f"{self.base_url}/setup/expenses")
-            await self.page.wait_for_load_state('networkidle')
-            await self.page.wait_for_timeout(3000)
-            
-            # Get the count from the UI
-            count_element = await self.page.wait_for_selector('h3:has-text("Konfigurierte Quick-Expenses")', timeout=10000)
-            count_text = await count_element.text_content()
-            
-            # Extract count from text like "Konfigurierte Quick-Expenses (6)"
-            import re
-            count_match = re.search(r'\((\d+)\)', count_text)
-            ui_count = int(count_match.group(1)) if count_match else 0
-            
-            # Check database directly via JavaScript
-            db_count = await self.page.evaluate("""
-                async () => {
-                    try {
-                        const { db } = await import('./src/services/database.js');
-                        const count = await db.quickExpenses.count();
-                        const expenses = await db.quickExpenses.toArray();
-                        return { count: count, expenses: expenses };
-                    } catch (error) {
-                        return { error: error.message };
-                    }
-                }
-            """)
-            
-            existing_data = {
-                'ui_count': ui_count,
-                'db_count': db_count.get('count', 0) if isinstance(db_count, dict) else 0,
-                'db_expenses': db_count.get('expenses', []) if isinstance(db_count, dict) else [],
-                'db_error': db_count.get('error') if isinstance(db_count, dict) else None
-            }
-            
-            self.test_results["quick_expenses_tests"]["existing_data"] = existing_data
-            
-            print(f"📊 Existing Quick-Expenses:")
-            print(f"   UI Count: {existing_data['ui_count']}")
-            print(f"   DB Count: {existing_data['db_count']}")
-            if existing_data['db_error']:
-                print(f"   DB Error: {existing_data['db_error']}")
-            
-            return existing_data
-            
-        except Exception as e:
-            print(f"❌ Error checking existing Quick-Expenses: {e}")
-            return None
-
-    async def test_add_quick_expense(self):
-        """Test adding a new Quick-Expense"""
-        print("\n🔍 Testing Quick-Expense addition...")
-        
-        try:
-            # Navigate to Quick-Expenses page
-            await self.page.goto(f"{self.base_url}/setup/expenses")
-            await self.page.wait_for_load_state('networkidle')
-            await self.page.wait_for_timeout(2000)
-            
-            # Get initial count
-            initial_count_element = await self.page.wait_for_selector('h3:has-text("Konfigurierte Quick-Expenses")', timeout=10000)
-            initial_count_text = await initial_count_element.text_content()
-            import re
-            initial_count_match = re.search(r'\((\d+)\)', initial_count_text)
-            initial_count = int(initial_count_match.group(1)) if initial_count_match else 0
-            
-            print(f"   Initial count: {initial_count}")
-            
-            # Click "Quick-Expense hinzufügen" button
-            add_button = await self.page.wait_for_selector('button:has-text("Quick-Expense hinzufügen")', timeout=10000)
-            await add_button.click()
-            await self.page.wait_for_timeout(1000)
-            
-            # Fill the form
-            test_expense = {
-                'name': 'Test Ausgabe',
-                'amount': '15.50',
-                'category': 'Food & Ingredients'
-            }
-            
-            # Fill name field
-            name_input = await self.page.wait_for_selector('input[placeholder="z.B. Gemüse"]', timeout=5000)
-            await name_input.fill(test_expense['name'])
-            
-            # Fill amount field
-            amount_input = await self.page.wait_for_selector('input[placeholder="25.00"]', timeout=5000)
-            await amount_input.fill(test_expense['amount'])
-            
-            # Select category (should be default)
-            category_select = await self.page.wait_for_selector('select', timeout=5000)
-            await category_select.select_option(test_expense['category'])
-            
-            # Click save button
-            save_button = await self.page.wait_for_selector('button:has-text("Hinzufügen")', timeout=5000)
-            await save_button.click()
-            
-            # Wait for the operation to complete
-            await self.page.wait_for_timeout(3000)
-            
-            # Check if count increased
-            updated_count_element = await self.page.wait_for_selector('h3:has-text("Konfigurierte Quick-Expenses")', timeout=10000)
-            updated_count_text = await updated_count_element.text_content()
-            updated_count_match = re.search(r'\((\d+)\)', updated_count_text)
-            updated_count = int(updated_count_match.group(1)) if updated_count_match else 0
-            
-            # Check if the new expense appears in the list
-            expense_cards = await self.page.query_selector_all('.grid .border-2')
-            found_test_expense = False
-            
-            for card in expense_cards:
-                card_text = await card.text_content()
-                if test_expense['name'] in card_text and test_expense['amount'] in card_text:
-                    found_test_expense = True
-                    break
-            
-            # Verify in database
-            db_verification = await self.page.evaluate("""
-                async () => {
-                    try {
-                        const { db } = await import('./src/services/database.js');
-                        const expenses = await db.quickExpenses.toArray();
-                        const testExpense = expenses.find(e => e.name === 'Test Ausgabe');
-                        return { 
-                            total: expenses.length, 
-                            found: !!testExpense,
-                            expense: testExpense 
-                        };
-                    } catch (error) {
-                        return { error: error.message };
-                    }
-                }
-            """)
-            
-            add_test_result = {
-                'initial_count': initial_count,
-                'updated_count': updated_count,
-                'count_increased': updated_count > initial_count,
-                'found_in_ui': found_test_expense,
-                'db_verification': db_verification,
-                'test_expense': test_expense
-            }
-            
-            self.test_results["quick_expenses_tests"]["add_test"] = add_test_result
-            
-            print(f"📊 Add Test Results:")
-            print(f"   Initial count: {add_test_result['initial_count']}")
-            print(f"   Updated count: {add_test_result['updated_count']}")
-            print(f"   Count increased: {add_test_result['count_increased']}")
-            print(f"   Found in UI: {add_test_result['found_in_ui']}")
-            print(f"   DB verification: {add_test_result['db_verification']}")
-            
-            return add_test_result
-            
-        except Exception as e:
-            print(f"❌ Error testing Quick-Expense addition: {e}")
-            return None
-
-    async def test_database_operations(self):
-        """Test direct database operations"""
-        print("\n🔍 Testing database operations...")
-        
-        try:
-            # Navigate to any page to have access to the database
-            await self.page.goto(f"{self.base_url}/setup/expenses")
-            await self.page.wait_for_load_state('networkidle')
-            
-            # Test database operations via JavaScript
-            db_test = await self.page.evaluate("""
-                async () => {
-                    try {
-                        // Import database
-                        const { db } = await import('./src/services/database.js');
-                        
-                        // Test 1: Check if database is accessible
-                        const isOpen = db.isOpen();
-                        
-                        // Test 2: Try to count quickExpenses
-                        const count = await db.quickExpenses.count();
-                        
-                        // Test 3: Try to get all quickExpenses
-                        const allExpenses = await db.quickExpenses.toArray();
-                        
-                        // Test 4: Try to add a test expense
-                        const testId = 'test_' + Date.now();
-                        await db.quickExpenses.add({
-                            id: testId,
-                            name: 'DB Test Expense',
-                            defaultAmount: 99.99,
-                            category: 'Test',
-                            isActive: true,
-                            color: 'blue'
-                        });
-                        
-                        // Test 5: Verify the addition
-                        const newCount = await db.quickExpenses.count();
-                        const addedExpense = await db.quickExpenses.get(testId);
-                        
-                        // Test 6: Clean up - delete the test expense
-                        await db.quickExpenses.delete(testId);
-                        const finalCount = await db.quickExpenses.count();
-                        
-                        return {
-                            isOpen: isOpen,
-                            initialCount: count,
-                            allExpenses: allExpenses.map(e => ({ id: e.id, name: e.name, amount: e.defaultAmount })),
-                            addSuccess: !!addedExpense,
-                            countAfterAdd: newCount,
-                            countAfterDelete: finalCount,
-                            addedExpense: addedExpense
-                        };
-                    } catch (error) {
-                        return { error: error.message, stack: error.stack };
-                    }
-                }
-            """)
-            
-            self.test_results["database_operations"] = db_test
-            
-            print(f"📊 Database Operations Test:")
-            if 'error' in db_test:
-                print(f"   ❌ Error: {db_test['error']}")
-            else:
-                print(f"   Database open: {db_test.get('isOpen', False)}")
-                print(f"   Initial count: {db_test.get('initialCount', 0)}")
-                print(f"   Add success: {db_test.get('addSuccess', False)}")
-                print(f"   Count after add: {db_test.get('countAfterAdd', 0)}")
-                print(f"   Count after delete: {db_test.get('countAfterDelete', 0)}")
-                print(f"   Existing expenses: {len(db_test.get('allExpenses', []))}")
-            
-            return db_test
-            
-        except Exception as e:
-            print(f"❌ Error testing database operations: {e}")
-            return None
-
-    async def diagnose_issue(self):
-        """Diagnose why Quick-Expenses might not be saving"""
-        print("\n🔍 Diagnosing Quick-Expenses issue...")
-        
-        try:
-            # Navigate to Quick-Expenses page
-            await self.page.goto(f"{self.base_url}/setup/expenses")
-            await self.page.wait_for_load_state('networkidle')
-            await self.page.wait_for_timeout(2000)
-            
-            # Check for JavaScript errors in console
-            console_errors = [log for log in self.test_results["error_logs"] if log['type'] == 'error']
-            
-            # Check network requests
-            network_requests = []
-            
-            def handle_request(request):
-                network_requests.append({
-                    'url': request.url,
-                    'method': request.method,
-                    'resource_type': request.resource_type
-                })
-            
-            self.page.on("request", handle_request)
-            
-            # Try to add an expense and monitor what happens
-            await self.page.click('button:has-text("Quick-Expense hinzufügen")')
-            await self.page.wait_for_timeout(1000)
-            
-            # Fill form
-            await self.page.fill('input[placeholder="z.B. Gemüse"]', 'Diagnose Test')
-            await self.page.fill('input[placeholder="25.00"]', '10.00')
-            
-            # Click save and monitor
-            await self.page.click('button:has-text("Hinzufügen")')
-            await self.page.wait_for_timeout(3000)
-            
-            # Check final state
-            final_count_element = await self.page.wait_for_selector('h3:has-text("Konfigurierte Quick-Expenses")', timeout=10000)
-            final_count_text = await final_count_element.text_content()
-            import re
-            final_count_match = re.search(r'\((\d+)\)', final_count_text)
-            final_count = int(final_count_match.group(1)) if final_count_match else 0
-            
-            diagnosis = {
-                'console_errors': console_errors,
-                'network_requests': network_requests[-10:],  # Last 10 requests
-                'final_count': final_count,
-                'page_url': self.page.url,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            self.test_results["ui_functionality"]["diagnosis"] = diagnosis
-            
-            print(f"🔍 Diagnosis Results:")
-            print(f"   Console errors: {len(console_errors)}")
-            for error in console_errors[-3:]:  # Show last 3 errors
-                print(f"     • {error['text']}")
-            print(f"   Network requests: {len(network_requests)}")
-            print(f"   Final count: {final_count}")
-            
-            return diagnosis
-            
-        except Exception as e:
-            print(f"❌ Error during diagnosis: {e}")
-            return None
-
-    async def run_comprehensive_test(self):
-        """Run all tests and provide comprehensive analysis"""
-        print("🚀 Starting comprehensive Quick-Expenses test...")
-        
-        if not await self.setup():
-            return False
-        
-        try:
-            # Run all tests
-            schema = await self.check_indexeddb_schema()
-            existing = await self.check_existing_quick_expenses()
-            add_test = await self.test_add_quick_expense()
-            db_ops = await self.test_database_operations()
-            diagnosis = await self.diagnose_issue()
-            
-            # Generate comprehensive report
-            print("\n" + "="*80)
-            print("📋 QUICK-EXPENSES TEST REPORT")
-            print("="*80)
-            
-            # Schema Analysis
-            if schema:
-                print(f"\n✅ INDEXEDDB SCHEMA:")
-                if schema.get('hasQuickExpenses'):
-                    print(f"   ✅ quickExpenses table exists (version {schema.get('version')})")
-                else:
-                    print(f"   ❌ quickExpenses table missing (version {schema.get('version')})")
-                print(f"   Tables: {', '.join(schema.get('objectStores', []))}")
-            
-            # Existing Data Analysis
-            if existing:
-                print(f"\n✅ EXISTING DATA:")
-                print(f"   UI shows: {existing['ui_count']} Quick-Expenses")
-                print(f"   Database has: {existing['db_count']} Quick-Expenses")
-                if existing['db_error']:
-                    print(f"   ❌ Database error: {existing['db_error']}")
-                else:
-                    print(f"   ✅ Database accessible")
-            
-            # Add Test Analysis
-            if add_test:
-                print(f"\n✅ ADD FUNCTIONALITY TEST:")
-                if add_test['count_increased'] and add_test['found_in_ui']:
-                    print(f"   ✅ Quick-Expense addition WORKING")
-                    print(f"   Count: {add_test['initial_count']} → {add_test['updated_count']}")
-                    print(f"   UI updated: {add_test['found_in_ui']}")
-                else:
-                    print(f"   ❌ Quick-Expense addition FAILED")
-                    print(f"   Count changed: {add_test['count_increased']}")
-                    print(f"   Found in UI: {add_test['found_in_ui']}")
-                    if add_test['db_verification'].get('error'):
-                        print(f"   DB Error: {add_test['db_verification']['error']}")
-            
-            # Database Operations Analysis
-            if db_ops:
-                print(f"\n✅ DATABASE OPERATIONS:")
-                if 'error' in db_ops:
-                    print(f"   ❌ Database operations FAILED: {db_ops['error']}")
-                else:
-                    print(f"   ✅ Database operations WORKING")
-                    print(f"   Add/Delete cycle successful: {db_ops.get('addSuccess', False)}")
-                    print(f"   Database accessible: {db_ops.get('isOpen', False)}")
-            
-            # Error Analysis
-            error_count = len(self.test_results["error_logs"])
-            if error_count > 0:
-                print(f"\n❌ ERRORS DETECTED ({error_count}):")
-                for error in self.test_results["error_logs"][-5:]:  # Show last 5 errors
-                    print(f"   • [{error['type']}] {error['text']}")
-            else:
-                print(f"\n✅ NO JAVASCRIPT ERRORS DETECTED")
-            
-            # Final Assessment
-            print(f"\n📊 FINAL ASSESSMENT:")
-            
-            # Determine if Quick-Expenses are working
-            schema_ok = schema and schema.get('hasQuickExpenses', False)
-            db_ops_ok = db_ops and not 'error' in db_ops and db_ops.get('addSuccess', False)
-            add_test_ok = add_test and add_test.get('count_increased', False) and add_test.get('found_in_ui', False)
-            
-            if schema_ok and db_ops_ok and add_test_ok:
-                print(f"   ✅ Quick-Expenses functionality is WORKING")
-                print(f"   ✅ Database schema is correct")
-                print(f"   ✅ CRUD operations are functional")
-                print(f"   ✅ UI updates correctly")
-            else:
-                print(f"   ❌ Quick-Expenses functionality has ISSUES")
-                if not schema_ok:
-                    print(f"      • Database schema issue")
-                if not db_ops_ok:
-                    print(f"      • Database operations failing")
-                if not add_test_ok:
-                    print(f"      • UI add functionality not working")
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Test failed with error: {e}")
-            return False
-        
-        finally:
-            if self.browser:
-                await self.browser.close()
-
-async def main():
-    """Main test execution"""
-    tester = QuickExpenseTester()
-    success = await tester.run_comprehensive_test()
     
-    if success:
-        print(f"\n🎉 Test completed successfully!")
-        sys.exit(0)
-    else:
-        print(f"\n💥 Test failed!")
-        sys.exit(1)
+    def run_session_sales_tests(self):
+        """Run session-specific sales tests"""
+        self.log("🚀 Starting Session-Specific Sales Tests")
+        
+        # Test health check first
+        if not self.test_health_check():
+            self.log("❌ Health check failed, stopping tests")
+            return False
+        
+        # Run session-specific sales test
+        success = self.test_session_specific_sales_functionality()
+        
+        # Print final results
+        self.log("=" * 50)
+        self.log(f"📊 Tests completed: {self.tests_passed}/{self.tests_run} passed")
+        
+        if self.tests_passed == self.tests_run:
+            self.log("🎉 All tests passed!")
+            return True
+        else:
+            self.log(f"⚠️  {self.tests_run - self.tests_passed} tests failed")
+            return False
+
+def main():
+    tester = RestaurantAPITester()
+    # Run session-specific sales tests as requested
+    success = tester.run_session_sales_tests()
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(main())
